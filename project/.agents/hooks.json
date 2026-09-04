@@ -1,0 +1,15 @@
+{
+  "format-lint": {
+    "PostToolUse": [
+      {
+        "matcher": "replace_file_content|write_to_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/format-lint.js"
+          }
+        ]
+      }
+    ]
+  }
+}

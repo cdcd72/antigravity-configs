@@ -12,3 +12,8 @@ Desktop.ini
 
 # Node modules (if any)
 node_modules/
+
+# Local scope sync & backups
+/.agents/
+.agy-scope-sync.json
+.agy-scope-backups/
