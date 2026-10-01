@@ -18,8 +18,20 @@ user/.agents/
 project/.agents/
 ├─ hooks.json                                        # PostToolUse：針對 replace_file_content / write_to_file 觸發
 └─ hooks/format-lint.js                              # 寫檔後自動執行 prettier / eslint --fix
+tests/
+└─ block-dangerous.test.js                           # block-dangerous 的單元測試（node:test）
 scripts/sync-agy-scope.ps1                           # 同步腳本（支援 User 與 Project Scope）
 ```
+
+## 測試
+
+使用 Node.js 內建測試 runner（Node 18+），無需安裝額外套件：
+
+```powershell
+node --test
+```
+
+測試涵蓋遞迴旗標、刪除目標路徑（專案內放行、專案外/磁碟根/家目錄擋下）、`.git` 保護、git 規則、引號與跳脫、外殼巢狀呼叫、固定規則與 fail-closed 異常輸入。支援以環境變數 `$env:HOOK_PATH = '...'` 指定測試其他 hook 實體。
 
 ## 同步腳本 `scripts/sync-agy-scope.ps1`
 
@@ -60,8 +72,12 @@ pwsh -NoProfile -File .\scripts\sync-agy-scope.ps1 -Scope Project -TargetRepo .
 ## Hook 行為
 
 - **`block-dangerous.js`**（PreToolUse，matcher: `run_command`）：
-  指令執行前由 Antigravity 透過 stdin 傳入 `{ toolCall: { name: "run_command", args: { CommandLine: "..." } } }`。若命中危險特徵，以 stdout 回傳 `{"decision":"deny","reason":"..."}` 並以 exit code 2 阻斷。
-  涵蓋：`rm -rf`、`dd of=/dev/*`、`mkfs`、`shutdown`/`reboot`、`Remove-Item -Recurse -Force`、`Format-Volume`、`Clear-Disk`、`Stop-Computer`/`Restart-Computer`。
+  指令執行前由 Antigravity 透過 stdin 傳入 `{ toolCall: { name: "run_command", args: { CommandLine: "...", Cwd: "..." } } }`（亦相容 `tool_input.command`）。
+  - **刪除指令目標判斷**：解析 PowerShell（`Remove-Item`、`ri`、`rm`、`rmdir`、`del`、`rd` 等）與 cmd（`del /s`、`rd /s`）的遞迴旗標與目標路徑。磁碟根、家目錄、專案目錄本身或其上層、專案外路徑、`.git`、變數與萬用字元一律阻斷；明確位於專案目錄內的子路徑（如 `dist`、`build`、測試目錄）放行。
+  - **Git 不可逆操作**：阻斷 `git clean -f`（不含 `-n`）、`git reset --hard`、`git push --force`（含 `-f`、`+refspec`）；放行 `git push --force-with-lease` 與 `git clean -n`。
+  - **外殼與子運算式**：遞迴檢查 `pwsh`、`cmd`、`bash` 外殼包裝與括號子運算式中的指令。
+  - **固定規則**：攔截 `Clear-Disk`、`Format-Volume`、`Stop-Computer`、`Restart-Computer`、`shutdown`、`reboot`、`dd of=/dev/`、`mkfs`。
+  - **fail-closed**：stdin 為空、格式錯誤、缺少指令或 hook 內部異常時，一律以 exit code 2 阻斷並輸出 `{"decision":"deny","reason":"..."}` 與 stderr 錯誤訊息。
 - **`format-lint.js`**（PostToolUse，matcher: `replace_file_content|write_to_file`）：
   檔案寫入完成後觸發。偵測不到 `package.json` 或 `pnpm` 則自動略過。對目標檔案執行 `pnpm prettier --write`（失敗不阻斷），若是 js/ts/svelte 則再執行 `pnpm eslint --fix`；若修復後仍有 error，輸出錯誤訊息並以 exit 2 要求修正。
 
